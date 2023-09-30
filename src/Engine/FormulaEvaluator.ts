@@ -16,27 +16,39 @@ export class FormulaEvaluator {
   }
 
   evaluate(formula: FormulaType) {
+    // set the current formula to the new formula
+    this._currentFormula = [...formula];
+    this._lastResult = 0;
+    // clear the error message
     this._errorMessage = "";
+    // set the errorOccured flag
     this._errorOccured = false;
 
-    // set the this._result to the length of the formula
-    this._currentFormula = [...formula];
+    switch (formula.length) {
+      case 0:
+        this._errorMessage = ErrorMessages.emptyFormula;
+        break;
+      default:
+        this._errorMessage = "";
+        break;
+    }
 
-    // if the formula is empty return 0
-    if (formula.length === 0) {
+    // if the formula is empty return set the result to 0 and return
+    if (this._errorMessage === ErrorMessages.emptyFormula) {
       this._result = 0;
-      this._errorMessage = ErrorMessages.emptyFormula;
       return;
     }
 
-    let result = this.addition();
+    let result = this.calculate();
     this._result = result;
 
-    if (!this._errorOccured && this._currentFormula.length > 0) {
-      this._errorOccured = true;
+    // if there was an error set the result to invalid formula
+    if (this._currentFormula.length > 0 && !this._errorOccured) {
       this._errorMessage = ErrorMessages.invalidFormula;
+      this._errorOccured = true;
     }
 
+    // if there was an error set the result to the last result
     if (this._errorOccured) {
       this._result = this._lastResult;
     }
@@ -50,81 +62,111 @@ export class FormulaEvaluator {
     return this._result;
   }
 
-  // function to add a number to the result
-  private addition(): number {
+  // calculate the result of the formula
+  private calculate(): number {
     if (this._errorOccured) {
       return this._lastResult;
     }
-    let result = this.multiplication();
+    // get the first token
+    let result = this.token();
     while (
       this._currentFormula.length > 0 &&
-      (this._currentFormula[0] === "-" || this._currentFormula[0] === "+")
+      (this._currentFormula[0] === "+" || this._currentFormula[0] === "-")
     ) {
-      let token = this._currentFormula.shift();
-      let multiplication = this.multiplication();
-      if (token === "+") {
-        result += multiplication;
-      } else {
-        result -= multiplication;
+      let operator = this._currentFormula.shift();
+      let token = this.token();
+      if (operator === "+") {
+        result += token;
+      } else if (operator === "-") {
+        result -= token;
       }
     }
+    // set the lastResult to the result
     this._lastResult = result;
     return result;
   }
 
-  // function to multiply a number to the result
-  private multiplication(): number {
+  private operator(): boolean {
+    switch (this._currentFormula[0]) {
+      case "/":
+      case "*":
+      case "+/-":
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private token(): number {
     if (this._errorOccured) {
       return this._lastResult;
     }
-    let result = this.parentheses();
-    while (
-      this._currentFormula.length > 0 &&
-      (this._currentFormula[0] === "*" || this._currentFormula[0] === "/")
-    ) {
-      let token = this._currentFormula.shift();
-      let parentheses = this.parentheses();
-      if (token === "*") {
-        result *= parentheses;
-      } else if (token === "/") {
-        if (parentheses === 0) {
-          this._errorOccured = true;
+    let result = this.parse();
+    while (this._currentFormula.length > 0 && this.operator()) {
+      let operator = this._currentFormula.shift();
+
+      if (this._errorOccured && operator === "+/-") {
+        this._errorMessage = "";
+        this._errorOccured = false;
+      }
+
+      // if the operator is +/-
+      if (operator === "+/-") {
+        if (result === 0) {
+          result = 0;
+        } else {
+          result = result * -1;
+        }
+        continue;
+      }
+
+      let number = this.parse();
+      if (operator === "*") {
+        result *= number;
+      } else if (operator === "/") {
+        // check for divide by zero
+        if (number === 0) {
           this._errorMessage = ErrorMessages.divideByZero;
+          this._errorOccured = true;
           this._lastResult = Infinity;
           return Infinity;
+        } else {
+          result /= number;
         }
-        result /= parentheses;
       }
     }
+    // set the lastResult to the result
     this._lastResult = result;
     return result;
   }
 
-  // function to evaluate parentheses
-  private parentheses(): number {
+  private parse(): number {
     if (this._errorOccured) {
       return this._lastResult;
     }
     let result = 0;
+
     if (this._currentFormula.length === 0) {
-      this._errorOccured = true;
       this._errorMessage = ErrorMessages.partial;
+      this._errorOccured = true;
       return result;
     }
 
+    // get the current token
     let token = this._currentFormula.shift();
 
+    // if the token is a number set the result to the number
     if (this.isNumber(token)) {
       result = Number(token);
       this._lastResult = result;
     } else if (token === "(") {
-      result = this.addition();
+      result = this.calculate();
       if (
         this._currentFormula.length === 0 ||
         this._currentFormula.shift() !== ")"
       ) {
-        this._errorOccured = true;
         this._errorMessage = ErrorMessages.missingParentheses;
+        this._errorOccured = true;
         this._lastResult = result;
       }
     } else if (this.isCellReference(token)) {
@@ -135,8 +177,8 @@ export class FormulaEvaluator {
         this._lastResult = result;
       }
     } else {
-      this._errorOccured = true;
       this._errorMessage = ErrorMessages.invalidFormula;
+      this._errorOccured = true;
     }
     return result;
   }

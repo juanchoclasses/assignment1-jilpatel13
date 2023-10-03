@@ -1,7 +1,3 @@
-### Your Information
-
-## TODO: Please edit the following information in your assignment
-
 Name: Jil Bipinkumar Patel
 
 GitHub Handle: jilpatel13
